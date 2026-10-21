@@ -2,6 +2,11 @@
 
 所有值得注意的改动都记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-10-21
+
+### Fixed
+- 修复弹框并回到对话失败的问题
+
 ## [1.0.0] - 2026-10-21
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "dsh-reminding",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "System reminders for DeepSeek Harness: OS notifications when a step needs your approval, the model asks a question, or a turn finishes; click a toast to jump back to that conversation. Works on Windows, macOS and Linux.",
   "license": "MIT",
   "author": "liuchaoxu <ischaoxu@163.com>",
