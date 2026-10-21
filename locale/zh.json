@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "系统提醒",
+    "description": "对话需要授权、模型提问或回复完成时弹出系统通知；点击通知直接回到对应对话。支持 Windows / macOS / Linux。"
+  }
+}

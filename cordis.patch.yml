@@ -1,0 +1,14 @@
+# dsh-reminding bundle patch.
+#
+# The Host half follows the Session log (approval asks, user questions and turn
+# ends) and serves them to the browser half over a loopback Web route; the
+# browser half turns them into OS notifications and opens the matching
+# conversation when a toast is clicked. The browser half is discovered from
+# this row's `dsh.client` declaration in package.json.
+#
+# No Config schema is declared, so the row stays trivially overridable from a
+# user patch layer.
+- insert:
+    - id: dsh-reminding
+      name: 'dsh-reminding'
+      config: {}

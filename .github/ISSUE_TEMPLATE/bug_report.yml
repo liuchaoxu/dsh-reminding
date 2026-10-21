@@ -1,0 +1,83 @@
+name: Bug report
+description: A reminder did not appear, appeared for the wrong session, or clicking it did not open the conversation.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Before filing, please confirm the OS did not disable notifications for this app:
+        **Windows → Settings → System → Notifications → DeepSeek Harness** (the OS can silence a single app without the plugin being able to detect it).
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness version
+      description: Shown in Settings → General → Current version.
+      placeholder: "0.2.1-rc.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: permission
+    attributes:
+      label: Notification permission shown in Settings → General → System reminders
+      options:
+        - Allowed
+        - Not granted yet
+        - Blocked
+        - Unsupported
+        - Unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Where Harness runs
+      options:
+        - DSH desktop app
+        - dsh web in a browser
+        - Other (explain below)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Which reminder did you expect (approval / question / turn finished / failure / test), and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a conversation and trigger a tool approval.
+        2. Switch to another application.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: DevTools console output, DSH logs, and a screenshot of the OS notification settings if relevant.
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the OS-level notification setting for this app.
+          required: true
+        - label: I am on a supported version (DSH >= 0.2.1-rc.2).
+          required: true

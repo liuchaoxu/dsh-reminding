@@ -1,0 +1,89 @@
+{
+  "name": "dsh-reminding",
+  "version": "1.0.0",
+  "description": "System reminders for DeepSeek Harness: OS notifications when a step needs your approval, the model asks a question, or a turn finishes; click a toast to jump back to that conversation. Works on Windows, macOS and Linux.",
+  "license": "MIT",
+  "author": "liuchaoxu <ischaoxu@163.com>",
+  "homepage": "https://github.com/liuchaoxu/dsh-reminding#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liuchaoxu/dsh-reminding.git"
+  },
+  "bugs": {
+    "url": "https://github.com/liuchaoxu/dsh-reminding/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "cordis",
+    "cordis-plugin",
+    "notification",
+    "notifications",
+    "desktop-notification",
+    "system-notification",
+    "toast",
+    "reminder",
+    "approval",
+    "user-question",
+    "turn-completed",
+    "cross-platform",
+    "windows",
+    "macos",
+    "linux"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/test-host.mjs && node scripts/test-client.mjs",
+    "test:host": "node scripts/test-host.mjs",
+    "test:client": "node scripts/test-client.mjs",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm run check && npm test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}
