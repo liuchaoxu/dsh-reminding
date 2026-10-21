@@ -12,6 +12,7 @@ import { EventEmitter } from 'node:events'
 import { apply } from '../index.js'
 
 const listeners = new Map()
+const routes = new Map()
 let route
 
 const registered = []
@@ -32,7 +33,8 @@ const ctx = {
   },
   webServer: {
     register(value) {
-      route = value
+      routes.set(value.path, value)
+      if (value.path === '/reminding/poll') route = value
       return () => {}
     },
   },
@@ -40,6 +42,7 @@ const ctx = {
 
 apply(ctx)
 assert.equal(route.path, '/reminding/poll')
+assert.ok(routes.has('/reminding/focus'), 'the toast-click route is mounted')
 
 const fire = (session, event) => listeners.get('session/event')(session, event)
 

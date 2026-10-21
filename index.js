@@ -25,10 +25,37 @@
  * starts a fresh baseline and never replays old reminders.
  */
 
+import { spawn } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+
 export const inject = ['webServer']
+
+/** Resolves Electron's main-process module when the Host runs inside the desktop shell. */
+const requireFromHost = createRequire(import.meta.url)
+
+/** TEMPORARY diagnostic log used while tracking a missing-notification report. */
+const DEBUG_LOG = fileURLToPath(new URL('./dsh-reminding-debug.log', import.meta.url))
+
+/**
+ * Append one diagnostic line to the temporary log; never fails the plugin.
+ * @param parts - values joined into the line.
+ */
+function debug(...parts) {
+  try {
+    appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ${parts.join(' ')}\n`)
+  } catch {
+    // Diagnostics must never disturb the plugin.
+  }
+}
+
+debug('module loaded')
 
 /** Loopback route the browser half long-polls. */
 const ROUTE_POLL = '/reminding/poll'
+/** Route the browser half calls when a toast is clicked, to restore the desktop window. */
+const ROUTE_FOCUS = '/reminding/focus'
 /** How many feed items stay available for a briefly disconnected page. */
 const MAX_FEED = 80
 /** How long one poll is held open before an empty answer releases it. */
@@ -99,10 +126,63 @@ function rejected(ctx, req, res) {
   } catch {
     rejection = undefined
   }
-  if (rejection === undefined) return false
+  if (rejection === undefined) {
+    debug('poll admitted', req.method ?? '', req.url ?? '', 'referer=' + String(req.headers?.referer ?? '-'))
+    return false
+  }
+  debug('poll rejected', String(rejection), req.method ?? '', req.url ?? '')
   res.statusCode = rejection
   res.end()
   return true
+}
+
+/**
+ * Restore and raise the desktop window after a toast click. The renderer's
+ * `window.focus()` cannot un-minimize an Electron window, and the desktop Host
+ * runs the Electron binary as Node (`ELECTRON_RUN_AS_NODE=1`), so it owns no
+ * windows. Launching the shell once more is the desktop's own focus path: the
+ * new process fails the single-instance lock and exits, and the running
+ * instance's `second-instance` handler restores and focuses its primary window.
+ * When the Host itself is the Electron main process, the window objects are
+ * used directly. A plain `dsh web` Host answers false without side effects.
+ * @returns true when a focus request was issued.
+ */
+async function focusDesktopWindow() {
+  // The desktop Host runs inside Electron with ELECTRON_RUN_AS_NODE=1, where
+  // `process.versions.electron` is still set but `require('electron')` is only
+  // the executable path, so the Node-mode branch must come first.
+  if (process.env.ELECTRON_RUN_AS_NODE === '1') {
+    try {
+      const env = { ...process.env }
+      delete env.ELECTRON_RUN_AS_NODE
+      debug('focus mode', 'relaunch', process.execPath)
+      const child = spawn(process.execPath, [], { env, detached: true, stdio: 'ignore' })
+      child.unref()
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (process.versions?.electron === undefined) return false
+  try {
+    const { BrowserWindow } = requireFromHost('electron')
+    if (typeof BrowserWindow?.getAllWindows !== 'function') return false
+    const windows = BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed())
+    const target = windows.find((window) => {
+      try {
+        return String(window.webContents?.getURL?.() ?? '').startsWith('dsh-app://app/')
+      } catch {
+        return false
+      }
+    }) ?? windows[0]
+    if (target === undefined) return false
+    if (target.isMinimized()) target.restore()
+    target.show()
+    target.focus()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -110,6 +190,7 @@ function rejected(ctx, req, res) {
  * @param ctx - host context with `webServer`.
  */
 export function apply(ctx) {
+  debug('apply', 'pid=' + String(process.pid))
   let seq = 0
   let disposed = false
   /** Published feed items, oldest first. */
@@ -127,6 +208,7 @@ export function apply(ctx) {
    */
   function publish(item) {
     if (disposed) return
+    debug('publish', item.kind ?? '', String(item.sessionId ?? ''), String(item.key ?? ''))
     seq += 1
     const entry = { seq, at: Date.now(), ...item }
     feed.push(entry)
@@ -174,6 +256,9 @@ export function apply(ctx) {
       clearTimeout(timer)
       waiters.delete(waiter)
     }
+    // A retiring Host answers instead of leaving the page's request hanging, so
+    // the browser half re-polls the replacement instance immediately.
+    waiter.end = () => finish([])
     waiters.add(waiter)
     req.once('close', waiter.cancel)
     res.once('close', waiter.cancel)
@@ -183,6 +268,7 @@ export function apply(ctx) {
   function cancelCompletion(sessionId) {
     const timer = completionTimers.get(sessionId)
     if (timer === undefined) return
+    debug('cancelCompletion', sessionId)
     clearTimeout(timer)
     completionTimers.delete(sessionId)
   }
@@ -213,6 +299,14 @@ export function apply(ctx) {
   function onSessionEvent(session, event) {
     try {
       if (disposed) return
+      const header = session?.header
+      debug(
+        'event',
+        String(event?.type ?? ''),
+        String(header?.id ?? session?.id ?? ''),
+        'origin=' + String(header?.origin ?? '-'),
+        'depth=' + String(header?.delegationDepth ?? 0),
+      )
       if (!shouldNotifySession(session)) return
       const sessionId = String(session?.header?.id ?? session?.id ?? '')
       if (sessionId === '') return
@@ -311,6 +405,7 @@ export function apply(ctx) {
   ctx.on('session/event', onSessionEvent)
   ctx.on('agent/disposed', (payload) => {
     const id = payload?.agent?.id
+    debug('agent/disposed', String(id ?? ''))
     if (id !== undefined) cancelCompletion(String(id))
   })
 
@@ -322,7 +417,10 @@ export function apply(ctx) {
       completionTimers.clear()
       for (const timer of approvalTimers.values()) clearTimeout(timer)
       approvalTimers.clear()
-      for (const waiter of [...waiters]) waiter.cancel()
+      for (const waiter of [...waiters]) {
+        if (typeof waiter.end === 'function') waiter.end()
+        else waiter.cancel()
+      }
       waiters.clear()
     }
   }, 'dsh-reminding: lifecycle')
@@ -353,4 +451,18 @@ export function apply(ctx) {
       hold(req, res, since)
     },
   }), 'dsh-reminding: /reminding/poll')
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: ROUTE_FOCUS,
+    handler: (req, res) => {
+      if (rejected(ctx, req, res)) return
+      debug('focus requested', req.method ?? '')
+      void focusDesktopWindow().then((focused) => {
+        debug('focus result', String(focused))
+        res.statusCode = 204
+        res.end()
+      })
+    },
+  }), 'dsh-reminding: /reminding/focus')
 }

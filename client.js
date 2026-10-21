@@ -183,8 +183,18 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Ask the Host to restore the desktop window; a browser Host has no window to restore. */
+    function requestWindowFocus() {
+      try {
+        void fetch('reminding/focus', { method: 'POST', cache: 'no-store' }).catch(() => {})
+      } catch {
+        // The Host route is an enhancement; window.focus() remains the fallback.
+      }
+    }
+
     /** Open the conversation that produced one reminder. */
     function openConversation(sessionId) {
+      requestWindowFocus()
       try {
         window.focus()
       } catch {
@@ -278,6 +288,9 @@ window.__ModuleLoader__.load({
     /** Live toasts by feed key, so a resolved approval/question can close its own toast. */
     const liveToasts = new Map()
 
+    /** TEMPORARY: last showReminder decision, reported through the next poll for diagnosis. */
+    let lastDecision = ''
+
     /** Close one toast by its feed key. */
     function closeToast(key) {
       const entry = liveToasts.get(key)
@@ -299,23 +312,26 @@ window.__ModuleLoader__.load({
      */
     function showReminder(t, item, options = {}) {
       if (options.force !== true) {
-        if (!enabled) return false
-        if (pageFocused() && viewingSession(item?.sessionId)) return false
+        if (!enabled) { lastDecision = `${item?.kind}:off`; return false }
+        if (pageFocused() && viewingSession(item?.sessionId)) { lastDecision = `${item?.kind}:focus`; return false }
       }
-      if (permissionState() !== 'granted') return false
+      if (permissionState() !== 'granted') { lastDecision = `${item?.kind}:perm=${permissionState()}`; return false }
       const copy = describe(t, item)
-      if (copy === null) return false
+      if (copy === null) { lastDecision = `${item?.kind}:nokind`; return false }
       try {
         const notification = new Notification(copy.title, {
           body: copy.body,
-          tag: typeof item.key === 'string' ? item.key : undefined,
+          tag: item?.kind === 'completed' ? undefined : typeof item.key === 'string' ? item.key : undefined,
         })
+        lastDecision = `${item?.kind}:ok`
+        notification.onshow = () => { lastDecision = `${item?.kind}:shown` }
         const key = typeof item.key === 'string' ? item.key : ''
         if (key !== '') {
           closeToast(key)
           liveToasts.set(key, notification)
         }
         notification.onclick = () => {
+          lastDecision = `click:${item?.sessionId ?? ''}`
           openConversation(item?.sessionId)
           try {
             notification.close()
@@ -328,10 +344,12 @@ window.__ModuleLoader__.load({
           if (key !== '') liveToasts.delete(key)
         }
         notification.onerror = () => {
+          lastDecision = `${item?.kind}:onerror`
           if (key !== '') liveToasts.delete(key)
         }
         return true
       } catch (err) {
+        lastDecision = `${item?.kind}:error=${err?.message ?? String(err)}`
         console.warn('[dsh-reminding] could not show the notification:', err)
         return false
       }
@@ -370,9 +388,18 @@ window.__ModuleLoader__.load({
         while (!stopped) {
           controller = typeof AbortController === 'function' ? new AbortController() : null
           try {
-            const response = await fetch(`${ROUTE_POLL}?since=${since}&wait=1`, {
+            const diag = `&page=${encodeURIComponent(window.location.href)}&perm=${encodeURIComponent(permissionState())}&on=${enabled ? 1 : 0}&focus=${pageFocused() ? 1 : 0}&dec=${encodeURIComponent(lastDecision)}`
+            // A poll the Host never answers (for example while its plugin
+            // reloads) must not freeze the feed: give every request a bound,
+            // above the Host's own 25s hold, and retry after it.
+            const timeout = typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(30_000) : null
+            let signal
+            if (controller === null) signal = timeout ?? undefined
+            else if (timeout !== null && typeof AbortSignal?.any === 'function') signal = AbortSignal.any([controller.signal, timeout])
+            else signal = controller.signal
+            const response = await fetch(`${ROUTE_POLL}?since=${since}&wait=1${diag}`, {
               cache: 'no-store',
-              ...(controller === null ? {} : { signal: controller.signal }),
+              ...(signal === undefined ? {} : { signal }),
             })
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             const payload = await response.json()
